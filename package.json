@@ -1,0 +1,105 @@
+{
+  "name": "ai-code-reviewer",
+  "displayName": "AI Code Reviewer",
+  "description": "AI-powered code analysis extension using local Ollama models for best practices, vulnerabilities, and improvement suggestions",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:aiCodeReviewer.analyzeFile",
+    "onCommand:aiCodeReviewer.analyzeWorkspace",
+    "onCommand:aiCodeReviewer.analyzeFolder"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiCodeReviewer.analyzeFile",
+        "title": "Analyze Current File",
+        "category": "AI Code Reviewer"
+      },
+      {
+        "command": "aiCodeReviewer.analyzeWorkspace",
+        "title": "Analyze Workspace",
+        "category": "AI Code Reviewer"
+      },
+      {
+        "command": "aiCodeReviewer.analyzeFolder",
+        "title": "Analyze Folder",
+        "category": "AI Code Reviewer"
+      },
+      {
+        "command": "aiCodeReviewer.configureOllama",
+        "title": "Configure Ollama Settings",
+        "category": "AI Code Reviewer"
+      }
+    ],
+    "configuration": {
+      "title": "AI Code Reviewer",
+      "properties": {
+        "aiCodeReviewer.ollamaUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama API URL"
+        },
+        "aiCodeReviewer.model": {
+          "type": "string",
+          "default": "gpt-oss:20b",
+          "description": "Ollama model to use for analysis"
+        },
+        "aiCodeReviewer.maxFileSize": {
+          "type": "number",
+          "default": 100000,
+          "description": "Maximum file size (in bytes) to analyze"
+        },
+        "aiCodeReviewer.includePatterns": {
+          "type": "array",
+          "default": [
+            "**/*.ts",
+            "**/*.js",
+            "**/*.tsx",
+            "**/*.jsx",
+            "**/*.py",
+            "**/*.java",
+            "**/*.cpp",
+            "**/*.c",
+            "**/*.go",
+            "**/*.rs"
+          ],
+          "description": "File patterns to include in analysis"
+        },
+        "aiCodeReviewer.excludePatterns": {
+          "type": "array",
+          "default": [
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/.git/**",
+            "**/vendor/**"
+          ],
+          "description": "File patterns to exclude from analysis"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}
+
+
