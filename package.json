@@ -13,7 +13,8 @@
   "activationEvents": [
     "onCommand:aiCodeReviewer.analyzeFile",
     "onCommand:aiCodeReviewer.analyzeWorkspace",
-    "onCommand:aiCodeReviewer.analyzeFolder"
+    "onCommand:aiCodeReviewer.analyzeFolder",
+    "onCommand:aiCodeReviewer.compareToCommit"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -36,6 +37,11 @@
       {
         "command": "aiCodeReviewer.configureOllama",
         "title": "Configure Ollama Settings",
+        "category": "AI Code Reviewer"
+      },
+      {
+        "command": "aiCodeReviewer.compareToCommit",
+        "title": "Compare to Previous Commit",
         "category": "AI Code Reviewer"
       }
     ],
@@ -98,7 +104,8 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "simple-git": "^3.22.0"
   }
 }
 

@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { OllamaService } from './services/ollamaService';
 import { CodeAnalyzer } from './services/codeAnalyzer';
 import { FeedbackPanel } from './panels/feedbackPanel';
+import { GitService } from './services/gitService';
+import { ComparisonResult } from './types';
 
 let ollamaService: OllamaService;
 let codeAnalyzer: CodeAnalyzer;
@@ -42,6 +44,13 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  const compareToCommitCommand = vscode.commands.registerCommand(
+    'aiCodeReviewer.compareToCommit',
+    async () => {
+      await compareToCommit();
+    }
+  );
+
   // Listen for configuration changes
   const configWatcher = vscode.workspace.onDidChangeConfiguration(async (e) => {
     if (e.affectsConfiguration('aiCodeReviewer')) {
@@ -55,6 +64,7 @@ export function activate(context: vscode.ExtensionContext) {
     analyzeWorkspaceCommand,
     analyzeFolderCommand,
     configureOllamaCommand,
+    compareToCommitCommand,
     configWatcher
   );
 }
@@ -245,6 +255,207 @@ async function configureOllama() {
     await config.update('model', model, vscode.ConfigurationTarget.Global);
     initializeServices();
     vscode.window.showInformationMessage('Ollama configuration updated!');
+  }
+}
+
+async function compareToCommit() {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    vscode.window.showErrorMessage('No workspace folder open.');
+    return;
+  }
+
+  const workspaceRoot = workspaceFolders[0].uri.fsPath;
+  const gitService = new GitService(workspaceRoot);
+
+  // Check if it's a git repository
+  const isRepo = await gitService.isRepository();
+  if (!isRepo) {
+    vscode.window.showErrorMessage('Not a git repository. Please initialize a git repository first.');
+    return;
+  }
+
+  // Check Ollama connection
+  const isConnected = await ollamaService.checkConnection();
+  if (!isConnected) {
+    vscode.window.showErrorMessage(
+      'Cannot connect to Ollama. Please ensure Ollama is running and the URL is correct in settings.',
+      'Open Settings'
+    ).then(selection => {
+      if (selection === 'Open Settings') {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'aiCodeReviewer');
+      }
+    });
+    return;
+  }
+
+  // Ask user to choose comparison type
+  const comparisonType = await vscode.window.showQuickPick(
+    [
+      { label: 'Compare to Previous Commit', description: 'Compare current changes to the previous commit', value: 'previous' },
+      { label: 'Compare to Specific Commit', description: 'Compare to a commit by hash', value: 'specific' }
+    ],
+    {
+      placeHolder: 'Select comparison type'
+    }
+  );
+
+  if (!comparisonType) {
+    return;
+  }
+
+  let commitHash: string | null = null;
+
+  if (comparisonType.value === 'previous') {
+    commitHash = await gitService.getPreviousCommitHash();
+    if (!commitHash) {
+      vscode.window.showErrorMessage('No previous commit found. Repository must have at least 2 commits.');
+      return;
+    }
+  } else {
+    // Get specific commit hash from user
+    const recentCommits = await gitService.getRecentCommits(10);
+    const commitOptions = recentCommits.map(commit => ({
+      label: commit.hash.substring(0, 7), // Display short hash
+      description: commit.message.substring(0, 60),
+      detail: `By ${commit.author} on ${commit.date}`,
+      value: commit.hash // Store full hash
+    }));
+
+    // Add option to enter custom hash
+    commitOptions.unshift({
+      label: 'Enter commit hash manually',
+      description: 'Type a commit hash',
+      detail: '',
+      value: 'manual'
+    });
+
+    const selectedCommit = await vscode.window.showQuickPick(commitOptions, {
+      placeHolder: 'Select a commit or enter hash manually'
+    });
+
+    if (!selectedCommit) {
+      return;
+    }
+
+    if (selectedCommit.value === 'manual') {
+      const hashInput = await vscode.window.showInputBox({
+        prompt: 'Enter commit hash',
+        placeHolder: 'e.g., abc1234'
+      });
+
+      if (!hashInput) {
+        return;
+      }
+
+      const isValid = await gitService.validateCommitHash(hashInput);
+      if (!isValid) {
+        vscode.window.showErrorMessage(`Invalid commit hash: ${hashInput}`);
+        return;
+      }
+
+      commitHash = hashInput;
+    } else {
+      commitHash = selectedCommit.value;
+    }
+  }
+
+  if (!commitHash) {
+    return;
+  }
+
+  // Ask user to choose comparison scope (working dir vs HEAD)
+  const scopeChoice = await vscode.window.showQuickPick(
+    [
+      { label: 'Working Directory', description: 'Compare uncommitted changes', value: 'working-dir' },
+      { label: 'HEAD Commit', description: 'Compare current HEAD commit', value: 'head' }
+    ],
+    {
+      placeHolder: 'Select what to compare'
+    }
+  );
+
+  if (!scopeChoice) {
+    return;
+  }
+
+  const comparisonTypeValue = scopeChoice.value as 'working-dir' | 'head';
+
+  try {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Comparing commits...',
+        cancellable: false
+      },
+      async (progress) => {
+        progress.report({ increment: 0, message: 'Getting commit information...' });
+
+        // Get commit info
+        const commitInfo = await gitService.getCommitInfo(commitHash!);
+        
+        progress.report({ increment: 20, message: 'Getting diff...' });
+
+        // Get diff
+        const diff = await gitService.getDiff(commitHash!, comparisonTypeValue);
+        
+        if (!diff || diff.trim().length === 0) {
+          vscode.window.showInformationMessage('No differences found between the selected commits.');
+          return;
+        }
+
+        progress.report({ increment: 30, message: 'Extracting changed files...' });
+
+        // Get changed files
+        const changedFiles = gitService.getChangedFiles(diff);
+        
+        if (changedFiles.length === 0) {
+          vscode.window.showInformationMessage('No code files changed.');
+          return;
+        }
+
+        progress.report({ increment: 40, message: 'Finding related files...' });
+
+        // Find related files
+        const relatedFiles = await codeAnalyzer.findRelatedFiles(changedFiles);
+
+        progress.report({ increment: 50, message: 'Analyzing diff...' });
+
+        // Analyze diff
+        const diffAnalysis = await codeAnalyzer.analyzeDiff(diff, changedFiles, relatedFiles, 'diff');
+
+        progress.report({ increment: 80, message: 'Analyzing architecture impact...' });
+
+        // Analyze architecture impact
+        const architectureImpact = await codeAnalyzer.analyzeArchitectureImpact(
+          changedFiles,
+          relatedFiles,
+          diff
+        );
+
+        progress.report({ increment: 100, message: 'Complete!' });
+
+        // Create comparison result
+        const comparisonResult: ComparisonResult = {
+          ...diffAnalysis,
+          baseCommitHash: commitHash!,
+          baseCommitInfo: commitInfo,
+          comparisonType: comparisonTypeValue,
+          changedFiles: changedFiles,
+          diff: diff,
+          architectureImpact: architectureImpact
+        };
+
+        const panel = FeedbackPanel.createOrShow(extensionContext.extensionUri);
+        panel.displayResults(comparisonResult);
+
+        vscode.window.showInformationMessage(
+          `Comparison complete! Analyzed ${changedFiles.length} changed file(s).`
+        );
+      }
+    );
+  } catch (error: any) {
+    vscode.window.showErrorMessage(`Comparison failed: ${error.message}`);
   }
 }
 
