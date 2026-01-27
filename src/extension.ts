@@ -74,7 +74,23 @@ function initializeServices() {
   const ollamaUrl = config.get<string>('ollamaUrl', 'http://localhost:11434');
   const model = config.get<string>('model', 'gpt-oss:20b');
   const maxFileSize = config.get<number>('maxFileSize', 100000);
-  const includePatterns = config.get<string[]>('includePatterns', []);
+  
+  // Default include patterns (matching package.json defaults)
+  const defaultIncludePatterns = [
+    '**/*.ts',
+    '**/*.js',
+    '**/*.tsx',
+    '**/*.jsx',
+    '**/*.py',
+    '**/*.java',
+    '**/*.cpp',
+    '**/*.c',
+    '**/*.go',
+    '**/*.rs',
+    '**/*.sql'
+  ];
+  
+  const includePatterns = config.get<string[]>('includePatterns', defaultIncludePatterns);
   const excludePatterns = config.get<string[]>('excludePatterns', []);
 
   ollamaService = new OllamaService({ url: ollamaUrl, model });

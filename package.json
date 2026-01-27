@@ -75,7 +75,8 @@
             "**/*.cpp",
             "**/*.c",
             "**/*.go",
-            "**/*.rs"
+            "**/*.rs",
+            "**/*.sql"
           ],
           "description": "File patterns to include in analysis"
         },
