@@ -35,6 +35,8 @@ An AI-powered VS Code extension that analyzes your codebase using local Ollama m
 6. In the new window, use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run:
    - `AI Code Reviewer: Analyze Current File`
    - `AI Code Reviewer: Analyze Workspace`
+   - `AI Code Reviewer: Analyze Folder`
+   - `AI Code Reviewer: Compare to Previous Commit`
 
 ## Configuration
 
@@ -131,8 +133,8 @@ The extension can analyze code in multiple languages:
 ### Analysis takes too long
 
 - Reduce the number of files by adjusting `includePatterns` and `excludePatterns`
-- Increase `maxFileSize` to skip very large files
-- Use a faster/smaller Ollama model
+- Increase `maxFileSize` to include very large files
+- Use a faster/smaller Ollama model (I use gpt-oss-20b and llama3.2)
 
 ### No results displayed
 
@@ -173,9 +175,6 @@ npm run compile
 3. Set breakpoints in the code
 4. Use the debug console to inspect variables
 
-## License
-
-MIT License
 
 ## Contributing
 
