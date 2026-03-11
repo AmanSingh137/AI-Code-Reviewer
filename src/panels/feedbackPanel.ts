@@ -1,7 +1,15 @@
 import * as vscode from 'vscode';
 import { AnalysisResult, ComparisonResult } from '../types';
 import * as path from 'path';
+import simpleGit, { SimpleGit } from 'simple-git';
+import axios from 'axios';
 
+interface Scores {
+  security: number;
+  maintainability: number;
+  performance: number;
+  readability: number;
+}
 export class FeedbackPanel {
   private static currentPanel: FeedbackPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
@@ -37,21 +45,21 @@ export class FeedbackPanel {
     return FeedbackPanel.currentPanel;
   }
 
-  public displayResults(results: AnalysisResult | AnalysisResult[] | ComparisonResult) {
+  public async displayResults(results: AnalysisResult | AnalysisResult[] | ComparisonResult) {
     // Check if it's a ComparisonResult
     if (!Array.isArray(results) && 'baseCommitHash' in results) {
       this._panel.title = 'Commit Comparison Results';
-      this._panel.webview.html = this.getComparisonWebviewContent(results);
+      this._panel.webview.html = await this.getComparisonWebviewContent(results);
       return;
     }
 
     const isArray = Array.isArray(results);
     const resultsArray = isArray ? results : [results];
     
-    this._panel.webview.html = this.getWebviewContent(resultsArray, isArray);
+    this._panel.webview.html = await this.getWebviewContent(resultsArray, isArray);
   }
 
-  private getWebviewContent(results: AnalysisResult[], isWorkspace: boolean): string {
+  private async getWebviewContent(results: AnalysisResult[], isWorkspace: boolean): Promise<string> {
     const severityColors: Record<string, string> = {
       low: '#4CAF50',
       medium: '#FF9800',
@@ -68,7 +76,7 @@ export class FeedbackPanel {
     };
 
     // Calculate average scores for workspace analysis
-    const scoringSummaryHtml = this.renderScoringSummary(results);
+    const scoringSummaryHtml = await this.renderScoringSummary(results);
 
     const renderResults = results.map(result => {
       const fileName = path.basename(result.filePath);
@@ -155,7 +163,7 @@ export class FeedbackPanel {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Code Review Results</title>
+  <title>REFINE: Code Review Results</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -364,7 +372,7 @@ export class FeedbackPanel {
 </head>
 <body>
   <div class="header">
-    <h1>🤖 AI Code Review Results</h1>
+    <h1>🤖 REFINE: Review Results</h1>
     <p>${isWorkspace ? `Analyzed ${results.length} file(s)` : 'Single file analysis'}</p>
   </div>
   ${scoringSummaryHtml}
@@ -373,7 +381,36 @@ export class FeedbackPanel {
 </html>`;
   }
 
-  private renderScoringSummary(results: AnalysisResult[]): string {
+
+  // private async isMainBranch(): Promise<boolean> {
+  //   const git: SimpleGit = simpleGit();
+  //   try{
+  //   let branch = await git.branch();
+  //   return branch.current === 'main';
+  //   } catch(err) {
+  //     console.log(err);
+  //   }
+  //   return false;
+  // }
+
+  // private async postReview(scores: Scores): Promise<void> {
+  //   try {
+  //     const response = await axios.post('http://localhost:3000/reviews', {
+  //       security_score: scores.security,
+  //       maintainability_score: scores.maintainability,
+  //       performance_score: scores.performance,
+  //       readability_score: scores.readability,
+  //       review_time: new Date()
+  //     }, {
+  //       headers: { 'Content-Type': 'application/json' }
+  //     });
+  //     console.log('POST response:', response.data);
+  //   } catch (err: any) {
+  //     console.error('Error posting review:', err?.message || err);
+  //   }
+  // }
+
+  private async renderScoringSummary(results: AnalysisResult[]): Promise<string> {
     // Calculate average scores across all files
     const validResults = results.filter(r => r.scores);
     if (validResults.length === 0) {
@@ -401,6 +438,11 @@ export class FeedbackPanel {
     avgScores.performance = Math.round((avgScores.performance / count) * 10) / 10;
     avgScores.readability = Math.round((avgScores.readability / count) * 10) / 10;
     avgScores.maintainability = Math.round((avgScores.maintainability / count) * 10) / 10;
+
+    // if (await this.isMainBranch()) {
+    //   await this.postReview(avgScores);
+    //   console.log("review posted");
+    // } 
 
     const getScoreRange = (score: number): string => {
       if (score >= 9) return 'excellent';
@@ -447,7 +489,7 @@ export class FeedbackPanel {
     `;
   }
 
-  private getComparisonWebviewContent(result: ComparisonResult): string {
+  private async getComparisonWebviewContent(result: ComparisonResult): Promise<string> {
     const severityColors: Record<string, string> = {
       low: '#4CAF50',
       medium: '#FF9800',
@@ -469,7 +511,7 @@ export class FeedbackPanel {
       high: '#F44336'
     };
 
-    const scoringSummaryHtml = this.renderScoringSummary([result]);
+    const scoringSummaryHtml = await this.renderScoringSummary([result]);
     
     const commitInfoHtml = `
       <div class="commit-info">

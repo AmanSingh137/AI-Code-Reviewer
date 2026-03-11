@@ -55,7 +55,7 @@ export function activate(context: vscode.ExtensionContext) {
   const configWatcher = vscode.workspace.onDidChangeConfiguration(async (e) => {
     if (e.affectsConfiguration('aiCodeReviewer')) {
       initializeServices();
-      vscode.window.showInformationMessage('AI Code Reviewer: Configuration updated');
+      vscode.window.showInformationMessage('REFINE: Configuration updated');
     }
   });
 
@@ -130,7 +130,7 @@ async function analyzeCurrentFile() {
       async () => {
         const result = await codeAnalyzer.analyzeFile(filePath);
         const panel = FeedbackPanel.createOrShow(extensionContext.extensionUri);
-        panel.displayResults(result);
+        await panel.displayResults(result);
       }
     );
   } catch (error: any) {
@@ -179,7 +179,7 @@ async function analyzeWorkspace() {
     }
 
     const panel = FeedbackPanel.createOrShow(extensionContext.extensionUri);
-    panel.displayResults(results);
+    await panel.displayResults(results);
     
     vscode.window.showInformationMessage(
       `Analysis complete! Analyzed ${results.length} file(s).`
@@ -238,7 +238,7 @@ async function analyzeFolder() {
     }
 
     const panel = FeedbackPanel.createOrShow(extensionContext.extensionUri);
-    panel.displayResults(results);
+    await panel.displayResults(results);
     
     vscode.window.showInformationMessage(
       `Analysis complete! Analyzed ${results.length} file(s).`
@@ -463,7 +463,7 @@ async function compareToCommit() {
         };
 
         const panel = FeedbackPanel.createOrShow(extensionContext.extensionUri);
-        panel.displayResults(comparisonResult);
+        await panel.displayResults(comparisonResult);
 
         vscode.window.showInformationMessage(
           `Comparison complete! Analyzed ${changedFiles.length} changed file(s).`
