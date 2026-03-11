@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { OllamaService } from './ollamaService';
-import { AnalysisResult, Vulnerability, Improvement, ScoringSummary, RubricScore } from '../types';
+import { AnalysisResult, Vulnerability, Improvement, ScoringSummary, RubricScore, ComparisonResult, ArchitectureImpact } from '../types';
 
 export class CodeAnalyzer {
   private ollamaService: OllamaService;
@@ -617,6 +617,224 @@ export class CodeAnalyzer {
     };
 
     return mergedScores;
+  }
+
+  async analyzeDiff(
+    diff: string,
+    changedFiles: string[],
+    relatedFiles: string[],
+    filePath: string = 'diff'
+  ): Promise<AnalysisResult> {
+    try {
+      const analysisText = await this.ollamaService.analyzeDiff(diff, changedFiles);
+      return this.parseAnalysisResponse(analysisText, filePath);
+    } catch (error: any) {
+      throw new Error(`Failed to analyze diff: ${error.message}`);
+    }
+  }
+
+  async analyzeArchitectureImpact(
+    changedFiles: string[],
+    relatedFiles: string[],
+    diff: string
+  ): Promise<ArchitectureImpact> {
+    try {
+      const analysisText = await this.ollamaService.analyzeArchitectureImpact(changedFiles, relatedFiles, diff);
+      return this.parseArchitectureImpactResponse(analysisText);
+    } catch (error: any) {
+      // Fallback to default architecture impact
+      return {
+        summary: 'Unable to analyze architecture impact: ' + error.message,
+        affectedComponents: changedFiles,
+        breakingChanges: [],
+        dependencyChanges: [],
+        riskLevel: 'medium'
+      };
+    }
+  }
+
+  private parseArchitectureImpactResponse(response: string): ArchitectureImpact {
+    try {
+      // Remove markdown code block markers
+      let cleanedResponse = response.trim();
+      cleanedResponse = cleanedResponse.replace(/^```(?:json|JSON)?\s*\n?/i, '');
+      cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '');
+      cleanedResponse = cleanedResponse.trim();
+
+      // Extract JSON
+      const firstBrace = cleanedResponse.indexOf('{');
+      if (firstBrace === -1) {
+        throw new Error('No JSON object found in response');
+      }
+
+      let jsonCandidate = cleanedResponse.substring(firstBrace);
+      jsonCandidate = this.fixIncompleteJson(jsonCandidate);
+
+      const parsed = JSON.parse(jsonCandidate);
+
+      return {
+        summary: parsed.summary || 'No summary provided',
+        affectedComponents: Array.isArray(parsed.affectedComponents) ? parsed.affectedComponents : [],
+        breakingChanges: Array.isArray(parsed.breakingChanges) ? parsed.breakingChanges : [],
+        dependencyChanges: Array.isArray(parsed.dependencyChanges) ? parsed.dependencyChanges : [],
+        riskLevel: this.parseRiskLevel(parsed.riskLevel)
+      };
+    } catch (error: any) {
+      // Fallback
+      return {
+        summary: 'Failed to parse architecture impact analysis: ' + error.message,
+        affectedComponents: [],
+        breakingChanges: [],
+        dependencyChanges: [],
+        riskLevel: 'medium'
+      };
+    }
+  }
+
+  private parseRiskLevel(riskLevel: any): 'low' | 'medium' | 'high' {
+    const r = String(riskLevel).toLowerCase();
+    if (['low', 'medium', 'high'].includes(r)) {
+      return r as 'low' | 'medium' | 'high';
+    }
+    return 'medium';
+  }
+
+  async findRelatedFiles(changedFiles: string[]): Promise<string[]> {
+    const relatedFiles = new Set<string>();
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      return [];
+    }
+
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+
+    // Read all code files to find imports/exports
+    const allCodeFiles = await this.findCodeFiles(workspaceRoot);
+    const importMap = new Map<string, Set<string>>(); // file -> set of imported files
+    const exportMap = new Map<string, Set<string>>(); // file -> set of files that import it
+
+    // Build import/export maps
+    for (const file of allCodeFiles) {
+      try {
+        const document = await vscode.workspace.openTextDocument(file);
+        const code = document.getText();
+        const imports = this.extractImports(code, file);
+        
+        importMap.set(file, new Set(imports));
+        for (const importedFile of imports) {
+          if (!exportMap.has(importedFile)) {
+            exportMap.set(importedFile, new Set());
+          }
+          exportMap.get(importedFile)!.add(file);
+        }
+      } catch (error) {
+        // Skip files that can't be read
+        continue;
+      }
+    }
+
+    // Find related files
+    for (const changedFile of changedFiles) {
+      // Files that import the changed file
+      const importingFiles = exportMap.get(changedFile);
+      if (importingFiles) {
+        importingFiles.forEach(f => relatedFiles.add(f));
+      }
+
+      // Files that the changed file imports
+      const importedFiles = importMap.get(changedFile);
+      if (importedFiles) {
+        importedFiles.forEach(f => relatedFiles.add(f));
+      }
+    }
+
+    // Remove changed files from related files
+    changedFiles.forEach(f => relatedFiles.delete(f));
+
+    return Array.from(relatedFiles);
+  }
+
+  private extractImports(code: string, filePath: string): string[] {
+    const imports: string[] = [];
+    const lines = code.split('\n');
+    const fileDir = path.dirname(filePath);
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    const workspaceRoot = workspaceFolders?.[0]?.uri.fsPath || '';
+
+    // Common import patterns
+    const importPatterns = [
+      // ES6/TypeScript: import ... from '...'
+      /import\s+.*?\s+from\s+['"](.+?)['"]/g,
+      // CommonJS: require('...')
+      /require\s*\(\s*['"](.+?)['"]\s*\)/g,
+      // Python: import ... or from ... import
+      /(?:^|\s)(?:import|from)\s+['"]?([^'"\s]+)['"]?/g,
+      // Go: import "..."
+      /import\s+['"](.+?)['"]/g,
+    ];
+
+    for (const line of lines) {
+      for (const pattern of importPatterns) {
+        const matches = line.matchAll(pattern);
+        for (const match of matches) {
+          if (match[1]) {
+            const importPath = match[1];
+            // Resolve relative imports
+            const resolvedPath = this.resolveImportPath(importPath, fileDir, workspaceRoot);
+            if (resolvedPath && fs.existsSync(resolvedPath)) {
+              imports.push(resolvedPath);
+            }
+          }
+        }
+      }
+    }
+
+    return imports;
+  }
+
+  private resolveImportPath(importPath: string, fileDir: string, workspaceRoot: string): string | null {
+    // Skip node_modules and external packages
+    if (importPath.startsWith('node_modules/') || !importPath.startsWith('.')) {
+      // Try to resolve as relative to workspace
+      const possiblePaths = [
+        path.join(workspaceRoot, importPath),
+        path.join(workspaceRoot, importPath + '.ts'),
+        path.join(workspaceRoot, importPath + '.js'),
+        path.join(workspaceRoot, importPath + '.tsx'),
+        path.join(workspaceRoot, importPath + '.jsx'),
+        path.join(fileDir, importPath),
+        path.join(fileDir, importPath + '.ts'),
+        path.join(fileDir, importPath + '.js'),
+        path.join(fileDir, importPath + '.tsx'),
+        path.join(fileDir, importPath + '.jsx'),
+      ];
+
+      for (const possiblePath of possiblePaths) {
+        if (fs.existsSync(possiblePath)) {
+          return possiblePath;
+        }
+      }
+    } else {
+      // Relative import
+      const possiblePaths = [
+        path.join(fileDir, importPath),
+        path.join(fileDir, importPath + '.ts'),
+        path.join(fileDir, importPath + '.js'),
+        path.join(fileDir, importPath + '.tsx'),
+        path.join(fileDir, importPath + '.jsx'),
+        path.join(fileDir, importPath, 'index.ts'),
+        path.join(fileDir, importPath, 'index.js'),
+      ];
+
+      for (const possiblePath of possiblePaths) {
+        if (fs.existsSync(possiblePath)) {
+          return possiblePath;
+        }
+      }
+    }
+
+    return null;
   }
 }
 

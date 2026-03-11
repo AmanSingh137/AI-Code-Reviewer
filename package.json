@@ -1,6 +1,6 @@
 {
   "name": "ai-code-reviewer",
-  "displayName": "AI Code Reviewer",
+  "displayName": "REFINE",
   "description": "AI-powered code analysis extension using local Ollama models for best practices, vulnerabilities, and improvement suggestions",
   "version": "0.0.1",
   "engines": {
@@ -13,7 +13,8 @@
   "activationEvents": [
     "onCommand:aiCodeReviewer.analyzeFile",
     "onCommand:aiCodeReviewer.analyzeWorkspace",
-    "onCommand:aiCodeReviewer.analyzeFolder"
+    "onCommand:aiCodeReviewer.analyzeFolder",
+    "onCommand:aiCodeReviewer.compareToCommit"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -21,26 +22,31 @@
       {
         "command": "aiCodeReviewer.analyzeFile",
         "title": "Analyze Current File",
-        "category": "AI Code Reviewer"
+        "category": "REFINE"
       },
       {
         "command": "aiCodeReviewer.analyzeWorkspace",
         "title": "Analyze Workspace",
-        "category": "AI Code Reviewer"
+        "category": "REFINE"
       },
       {
         "command": "aiCodeReviewer.analyzeFolder",
         "title": "Analyze Folder",
-        "category": "AI Code Reviewer"
+        "category": "REFINE"
       },
       {
         "command": "aiCodeReviewer.configureOllama",
         "title": "Configure Ollama Settings",
-        "category": "AI Code Reviewer"
+        "category": "REFINE"
+      },
+      {
+        "command": "aiCodeReviewer.compareToCommit",
+        "title": "Compare to Previous Commit",
+        "category": "REFINE"
       }
     ],
     "configuration": {
-      "title": "AI Code Reviewer",
+      "title": "REFINE",
       "properties": {
         "aiCodeReviewer.ollamaUrl": {
           "type": "string",
@@ -69,7 +75,8 @@
             "**/*.cpp",
             "**/*.c",
             "**/*.go",
-            "**/*.rs"
+            "**/*.rs",
+            "**/*.sql"
           ],
           "description": "File patterns to include in analysis"
         },
@@ -98,8 +105,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "axios": "^1.6.0"
+    "axios": "^1.13.4",
+    "simple-git": "^3.22.0"
   }
 }
-
-

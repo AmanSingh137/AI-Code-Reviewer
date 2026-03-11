@@ -120,6 +120,7 @@ The extension can analyze code in multiple languages:
 - C/C++ (.c, .cpp)
 - Go (.go)
 - Rust (.rs)
+- SQL (.sql)
 - And more (configurable via patterns)
 
 ## Troubleshooting

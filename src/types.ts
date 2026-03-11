@@ -44,4 +44,28 @@ export interface OllamaConfig {
   model: string;
 }
 
+export interface CommitInfo {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+}
+
+export interface ArchitectureImpact {
+  summary: string;
+  affectedComponents: string[];
+  breakingChanges: string[];
+  dependencyChanges: string[];
+  riskLevel: 'low' | 'medium' | 'high';
+}
+
+export interface ComparisonResult extends AnalysisResult {
+  baseCommitHash: string;
+  baseCommitInfo: CommitInfo;
+  comparisonType: 'working-dir' | 'head';
+  changedFiles: string[];
+  diff: string;
+  architectureImpact: ArchitectureImpact;
+}
+
 
